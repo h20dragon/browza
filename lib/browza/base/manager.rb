@@ -78,8 +78,6 @@ class Manager
         locator = { :css => _locator }
       elsif _locator.match(/^\s*css\s*=\s*(.*)\s*$/)
         locator = { :css => _locator.match(/^\s*css\s*=\s*(.*)$/)[1].to_s }
-        puts "LOCATOR.CSS => #{locator}"
-
       end
     end
 
