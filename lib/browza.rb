@@ -1,4 +1,4 @@
-require 'browza/version'
+#require 'browza/version'
 
 module Browza
   ROOT_DIR = File.join(File.dirname(File.expand_path(__FILE__)), 'browza').freeze

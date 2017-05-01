@@ -12,9 +12,27 @@ Browza also supports and easily integrates with Ruby Gem *appmodel* which suppor
 
 ### click(<locator>)
 
-### createBrowser
+### Browser Creation
+1. createBrowser
+* createBrowser(:chrome)
+* createBrowser(:firefox)
+1. start()
+  * Run locally
+    1. SELENIUM_RUN=local
+    1. SELENIUM_PLATFORM=local
+    1. SELENIUM_BROWSER=[ chrome | firefox | ie | edge ]
+    1. SELENIUM_RESOLUTION=[widthxheight]
+       * 1024x768
+  * Run on SauceLabs
+    1. SELENIUM_PLATFORM=[ Windows 8.1 | Windows 10 | linux | osx* ]
+    1. SELENIUM_BROWSER=[ chrome | firefox | ie | edge ]
+    1. SELENIUM_VERSION=[ version of browser ]
+       * 11.0  (for IE)
+       * 57.0  (for Chrome)
+       * 52.0  (for Chrome/Firefox)
+       * etc
+    1. SELENIUM_RESOLUTION=[widthxheight] 
 
-Creates a browser
 
 ### displayed?(<locator>)
 
