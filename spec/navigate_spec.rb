@@ -20,7 +20,13 @@ describe Browza do
   end
 
 
-  describe 'navigate' do
+  describe 'Navigate' do
+
+    it 'should navigate with single String parm as URL' do
+      Browza::Manager.instance.createBrowser(:chrome)
+      Browza::Manager.instance.navigate('http://stark-bastion-95510.herokuapp.com/playground')
+      expect(Browza::Manager.instance.isTitle?('H20Dragon Playground')).to be(true)
+    end
 
     it 'should navigate to Playground' do
       Browza::Manager.instance.createBrowser(:chrome)

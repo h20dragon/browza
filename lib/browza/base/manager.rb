@@ -51,7 +51,7 @@ class Manager
 
   def setSauceStatus(id, status)
     rc = false
-    @logger.debug __FILE__ + (__LINE__).to_s + " setSauceStatus(#{id}, #{status})"
+    @logger.debug __FILE__ + (__LINE__).to_s + " setSauceStatus(#{id}, #{status})" if @debug
 
 
     if (ENV['SELENIUM_RUN'] && ENV['SELENIUM_RUN'].match(/local/i)) || (ENV['SELENIUM_PLATFORM'] && ENV['SELENIUM_PLATFORM'].match(/local/i))
@@ -78,7 +78,7 @@ class Manager
 
 
   def connectSauce(id, _caps=nil)
-    @logger.debug __FILE__ + (__LINE__).to_s + " connectSauce(#{id}, #{_caps})"
+    @logger.debug __FILE__ + (__LINE__).to_s + " connectSauce(#{id}, #{_caps})" if @debug
     runLocal = false
 
     if _caps.is_a?(String) && File.exist?(caps)
@@ -126,8 +126,7 @@ class Manager
         caps[k.to_s] = v
       end
 
-      @logger.debug __FILE__ + (__LINE__).to_s + " caps => #{caps}"
-
+      @logger.debug __FILE__ + (__LINE__).to_s + " caps => #{caps}" if @debug
 
       begin
 
@@ -218,7 +217,7 @@ class Manager
     if (ENV['SELENIUM_RUN'] && ENV['SELENIUM_RUN'].match(/local/i)) || ENV['SELENIUM_PLATFORM'].match(/local/i)
       return createBrowser(p)
     else
-      # @logger.debug __FILE__ + (__LINE__).to_s + " connectSauce() => #{p}  #{p.class}  #{p.size}"
+      @logger.debug __FILE__ + (__LINE__).to_s + " connectSauce() => #{p}  #{p.class}  #{p.size}" if @debug
 
       if p.size == 0
         caps = {}
@@ -231,8 +230,7 @@ class Manager
 
         connectSauce(caps['name'], caps)
       end
-#      connectSauce(p)
-#      connectSauce(id, _caps=nil)
+
     end
   end
 
@@ -465,7 +463,7 @@ class Manager
   end
 
   def getElements(_locator, drv=nil, _timeout=30)
-    rc=nil
+    rc = nil
     begin
 
       if drv.nil?
@@ -496,9 +494,8 @@ class Manager
 
 
   def getElement(_locator, drv=nil, _timeout=30)
-
     @logger.debug __FILE__ + (__LINE__).to_s + " getElement(#{_locator})"
-    rc=nil
+    rc = nil
     begin
       locator = _parseLocator(_locator)
 
@@ -517,6 +514,9 @@ class Manager
 
         !rc.nil?
       }
+
+    rescue Selenium::WebDriver::Error::TimeOutError
+      @logger.debug __FILE__ + (__LINE__).to_s + " TimeOutError: #{locator}"
 
     rescue Selenium::WebDriver::Error::NoSuchElementError
       @logger.warn __FILE__ + (__LINE__).to_s + " NoSuchElementError : #{locator}"
@@ -783,6 +783,9 @@ class Manager
     obj
   end
 
+  def getDate()
+    return @driverList[0][:drv].execute_script('var s = new Date().toString(); return s')
+  end
 
   ##
   # Browza.instance.click('page(sideNav).get(desktop)')
@@ -897,19 +900,21 @@ class Manager
     obj = findLocator(_locator)
     if !obj.nil?
 
-      if _text.match(/\s*__CLEAR__\s*$/)
-        _text = :clear
-      elsif _text.match(/\s*__DOWN__\s*$/)
-        _text = :arrow_down
-      elsif _text.match(/\s*__LEFT__\s*$/)
-        _text = :arrow_left
-      elsif _text.match(/\s*__RIGHT__\s*$/)
-        _text = :arrow_right
-      elsif _text.match(/\s*__UP__\s*$/)
-        _text = :arrow_up
-      elsif _text.match(/\s*__TAB__\s*$/)
-        _text = :tab
-      elsif _text.match(/\s*__SHIFT_TAB__\s*$/)
+      if _text.match(/\s*__CLEAR__\s*$/i)
+       _text = :clear
+      elsif _text.match(/\s*__DOWN__\s*$/i)
+       _text = :arrow_down
+      elsif _text.match(/\s*__ENTER__\s*$/i)
+       _text = :enter
+      elsif _text.match(/\s*__LEFT__\s*$/i)
+       _text = :arrow_left
+      elsif _text.match(/\s*__RIGHT__\s*$/i)
+       _text = :arrow_right
+      elsif _text.match(/\s*__UP__\s*$/i)
+       _text = :arrow_up
+      elsif _text.match(/\s*__TAB__\s*$/i)
+       _text = :tab
+      elsif _text.match(/\s*__SHIFT_TAB__\s*$/i)
         @drv.action.key_down(:shift).send_keys(:tab).perform
         @drv.action.key_up(:shift).perform
         rc = true
@@ -925,15 +930,14 @@ class Manager
     rc
   end
 
-  def displayed?(_locator, _drv=nil, _timeout=30)
-    rc=false
 
-#    obj=getElement(findLocator(_locator), _drv, _timeout)
+  def isNotDisplayed?(_locator, _timeout=10)
+    !displayed?(_locator, getDriver(), _timeout)
+  end
+
+  def displayed?(_locator, _drv=nil, _timeout=30)
     obj = findLocator(_locator)
-    if !obj.nil?
-      rc=obj.displayed?
-    end
-    rc
+    obj.is_a?(Selenium::WebDriver::Element) && obj.displayed?
   end
 
   def focusedText()
@@ -1057,31 +1061,66 @@ class Manager
   end
 
 
-  def press(k, n=1)
+  ##
+  # press('enter')
+  # press('tab', 5)
+  # press('page(main).get(button)', 'enter')
+  ##
+  def press(*p)
+    rc = nil
 
-    n.times {
-      if k.match(/^\s*tab/i)
-        activeElt = @drv.switch_to.active_element
-        activeElt.send_keys(:tab)
-      elsif k.match(/^\s*clear\s*$/)
-        activeElt = @drv.switch_to.active_element
-        activeElt.clear
-      elsif k.match(/\s*^enter/i)
-        activeElt = @drv.switch_to.active_element
-        activeElt.send_keys(:enter)
-      elsif k.match(/\s*^(down|__down__|arrow_down)/i)
-        activeElt = @drv.switch_to.active_element
-        activeElt.send_keys(:arrow_down)
-      elsif k.match(/\s*^up/i)
-        activeElt = @drv.switch_to.active_element
-        activeElt.send_keys(:arrow_up)
-      elsif k.match(/\s*__SHIFT_TAB__\s*$/i)
-        @drv.action.key_down(:shift).send_keys(:tab).perform
-        @drv.action.key_up(:shift).perform
+    if p.length == 1
+      rc = pressKey(p[0], 1)
+    elsif p.length == 2
+
+      if p[1].is_a?(Integer) || p[1].to_s.match(/^\s*\d+$/)
+        rc = pressKey(p[0], p[1].to_i)
       else
-        break
+        rc = type(p[0], p[1])
       end
-    }
+
+    else
+      raise "BROWZA::Press::Unexpected"
+    end
+
+    rc
+  end
+
+  def pressKey(k, n = 1)
+
+    rc = 0
+    begin
+      n.times {
+        if k.match(/^\s*tab/i)
+          activeElt = @drv.switch_to.active_element
+          activeElt.send_keys(:tab)
+        elsif k.match(/^\s*clear\s*$/)
+          activeElt = @drv.switch_to.active_element
+          activeElt.clear
+        elsif k.match(/\s*^enter/i)
+          activeElt = @drv.switch_to.active_element
+          activeElt.send_keys(:enter)
+        elsif k.match(/\s*^(down|__down__|arrow_down)/i)
+          activeElt = @drv.switch_to.active_element
+          activeElt.send_keys(:arrow_down)
+        elsif k.match(/\s*^up/i)
+          activeElt = @drv.switch_to.active_element
+          activeElt.send_keys(:arrow_up)
+        elsif k.match(/\s*__SHIFT_TAB__\s*$/i)
+          @drv.action.key_down(:shift).send_keys(:tab).perform
+          @drv.action.key_up(:shift).perform
+        else
+          break
+        end
+
+        rc += 1
+      }
+
+    rescue => ex
+      ;
+    end
+
+    rc
   end
 
   def selected?(_locator, _drv=nil, _timeout=30)
