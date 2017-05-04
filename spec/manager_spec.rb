@@ -31,9 +31,4 @@ describe Browza do
   end
 
 
-
-
-
-
-
 end
