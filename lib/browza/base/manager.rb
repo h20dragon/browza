@@ -809,9 +809,9 @@ class Manager
         }
 
       #  drv.action.move_to(obj).perform
-        scrollElementIntoMiddle = "var viewPortHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);"
-        + "var elementTop = arguments[0].getBoundingClientRect().top;"
-        + "window.scrollBy(0, elementTop-(viewPortHeight/2));";
+        scrollElementIntoMiddle = "var viewPortHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);" +
+         "var elementTop = arguments[0].getBoundingClientRect().top;" +
+         "window.scrollBy(0, elementTop-(viewPortHeight/2));";
 
 
       #  drv.execute_script(scrollElementIntoMiddle, obj)
