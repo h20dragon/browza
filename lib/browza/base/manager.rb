@@ -142,7 +142,7 @@ class Manager
           puts "SauceOnDemandSessionID=#{@drv.session_id} job-name=#{caps[:name]}"
         end
 
-        _addDriver( { :id => id, :drv => @drv, :is_sauce => true })
+        _addDriver( { :id => id, :drv => @drv, :is_sauce => !runLocal })
       rescue => ex
         @logger.fatal __FILE__ + (__LINE__).to_s + " #{ex.class}"
         @logger.fatal "Backtrace:\n\t#{ex.backtrace.join("\n\t")}"
@@ -382,7 +382,8 @@ class Manager
 
           b[:drv].quit
         rescue => ex
-          @logger.fatal " #{ex.class}"
+          @logger.fatal __FILE__ + (__LINE__).to_s + " #{ex.class}  #{ex.message}"
+          @logger.warn "Backtrace:\n\t#{ex.backtrace.join("\n\t")}"
         end
 
       end
