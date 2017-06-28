@@ -788,6 +788,30 @@ class Manager
     return @driverList[0][:drv].execute_script('var s = new Date().toString(); return s')
   end
 
+
+  def text(_locator, _drv=nil, _timeout=30)
+    rc=nil
+
+    @driverList.each do |b|
+      begin
+
+        drv=b[:drv]
+        obj=nil
+        drv.switch_to.default_content
+        isDisplayed = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
+          obj = findLocator(_locator, drv)
+          obj.is_a?(Selenium::WebDriver::Element) && obj.displayed? && obj.enabled?
+        }
+        if !obj.nil? && isDisplayed && obj.is_a?(Selenium::WebDriver::Element)
+          @logger.debug __FILE__ + (__LINE__).to_s + " clicked #{_locator}"
+          rc = obj.text
+        end
+      end
+    end
+
+    rc
+  end
+
   ##
   # Browza.instance.click('page(sideNav).get(desktop)')
   ##
@@ -803,6 +827,8 @@ class Manager
         obj = nil
 
     #    obj = findLocator(_locator, drv)
+
+        drv.switch_to.default_content
 
         isDisplayed = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
           obj = findLocator(_locator, drv)
@@ -898,7 +924,13 @@ class Manager
     rc = false
 
 #    obj = getElement(findLocator(_locator), _drv, _timeout)
-    obj = findLocator(_locator)
+
+    if _locator.match(/(active|focused)/i)
+      obj = @drv.switch_to.active_element
+    else
+      obj = findLocator(_locator)
+    end
+
     if !obj.nil?
 
       if _text.match(/\s*__CLEAR__\s*$/i)
