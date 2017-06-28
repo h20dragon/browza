@@ -142,7 +142,7 @@ class Manager
           puts "SauceOnDemandSessionID=#{@drv.session_id} job-name=#{caps[:name]}"
         end
 
-        _addDriver( { :id => id, :drv => @drv, :is_sauce => true })
+        _addDriver( { :id => id, :drv => @drv, :is_sauce => !runLocal })
       rescue => ex
         @logger.fatal __FILE__ + (__LINE__).to_s + " #{ex.class}"
         @logger.fatal "Backtrace:\n\t#{ex.backtrace.join("\n\t")}"
@@ -382,7 +382,8 @@ class Manager
 
           b[:drv].quit
         rescue => ex
-          @logger.fatal " #{ex.class}"
+          @logger.fatal __FILE__ + (__LINE__).to_s + " #{ex.class}  #{ex.message}"
+          @logger.warn "Backtrace:\n\t#{ex.backtrace.join("\n\t")}"
         end
 
       end
@@ -787,6 +788,30 @@ class Manager
     return @driverList[0][:drv].execute_script('var s = new Date().toString(); return s')
   end
 
+
+  def text(_locator, _drv=nil, _timeout=30)
+    rc=nil
+
+    @driverList.each do |b|
+      begin
+
+        drv=b[:drv]
+        obj=nil
+        drv.switch_to.default_content
+        isDisplayed = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
+          obj = findLocator(_locator, drv)
+          obj.is_a?(Selenium::WebDriver::Element) && obj.displayed? && obj.enabled?
+        }
+        if !obj.nil? && isDisplayed && obj.is_a?(Selenium::WebDriver::Element)
+          @logger.debug __FILE__ + (__LINE__).to_s + " clicked #{_locator}"
+          rc = obj.text
+        end
+      end
+    end
+
+    rc
+  end
+
   ##
   # Browza.instance.click('page(sideNav).get(desktop)')
   ##
@@ -797,11 +822,9 @@ class Manager
 
     @driverList.each do |b|
       begin
-        drv=b[:drv]
-
+        drv = b[:drv]
         obj = nil
-
-    #    obj = findLocator(_locator, drv)
+        drv.switch_to.default_content
 
         isDisplayed = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
           obj = findLocator(_locator, drv)
@@ -809,9 +832,9 @@ class Manager
         }
 
       #  drv.action.move_to(obj).perform
-        scrollElementIntoMiddle = "var viewPortHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);"
-        + "var elementTop = arguments[0].getBoundingClientRect().top;"
-        + "window.scrollBy(0, elementTop-(viewPortHeight/2));";
+        scrollElementIntoMiddle = "var viewPortHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);" +
+         "var elementTop = arguments[0].getBoundingClientRect().top;" +
+         "window.scrollBy(0, elementTop-(viewPortHeight/2));";
 
 
       #  drv.execute_script(scrollElementIntoMiddle, obj)
@@ -897,7 +920,13 @@ class Manager
     rc = false
 
 #    obj = getElement(findLocator(_locator), _drv, _timeout)
-    obj = findLocator(_locator)
+
+    if _locator.match(/(active|focused)/i)
+      obj = @drv.switch_to.active_element
+    else
+      obj = findLocator(_locator)
+    end
+
     if !obj.nil?
 
       if _text.match(/\s*__CLEAR__\s*$/i)

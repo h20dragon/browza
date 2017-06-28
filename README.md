@@ -8,6 +8,10 @@ without having to code.
 
 Browza also supports and easily integrates with Ruby Gem *appmodel* which supports modeling (e.g. simplify pageObjects).
 
+## Installation
+
+gem install browza
+
 ## APIs
 
 ### click(<locator>)
