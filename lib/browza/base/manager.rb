@@ -822,12 +822,8 @@ class Manager
 
     @driverList.each do |b|
       begin
-        drv=b[:drv]
-
+        drv = b[:drv]
         obj = nil
-
-    #    obj = findLocator(_locator, drv)
-
         drv.switch_to.default_content
 
         isDisplayed = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
