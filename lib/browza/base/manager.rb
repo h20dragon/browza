@@ -236,6 +236,8 @@ class Manager
 
   def createBrowser(*p)
 
+    timeout = nil
+
     if ENV['SELENIUM_RESOLUTION']
       @logger.debug " SELENIUM_RESOLUTION=#{ENV['SELENIUM_RESOLUTION']}"  if @debug
       _width  = ENV['SELENIUM_RESOLUTION'].match(/\s*(\d+)\s*x\s*(\d+)\s*$/)[1].to_s
@@ -281,6 +283,10 @@ class Manager
             _height = h[:height]
           end
 
+          if h.has_key?(:timeout)
+            timeout = h[:timeout]
+          end
+
           if h.has_key?(:id)
             _id = h[:id]
           end
@@ -316,7 +322,17 @@ class Manager
     @logger.debug "Selenium::WebDriver.for #{@browserType}  (isSymbol: #{@browserType.is_a?(Symbol)})" if @debug
 
     begin
-      @drv = Selenium::WebDriver.for @browserType
+      if timeout.nil?
+        @drv = Selenium::WebDriver.for @browserType
+      else
+        client = Selenium::WebDriver::Remote::Http::Default.new
+        client.read_timeout = timeout.to_i
+
+        @drv = Selenium::WebDriver.for @browserType, http_client: client
+
+        puts __FILE__ + (__LINE__).to_s + " Set NET::TIMEOUT to #{timeout.to_s}"
+      end
+
     rescue  TypeError
       @logger.warn __FILE__ + (__LINE__).to_s +   " See https://github.com/mozilla/geckodriver/issues/676" if @browserType == :firefox
     end
@@ -812,10 +828,31 @@ class Manager
     rc
   end
 
+
+  def _getActionableElement(_locator, drv, _timeout = 30)
+    obj = nil
+    begin
+      drv.switch_to.default_content
+
+      isDisplayed = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
+        obj = findLocator(_locator, drv)
+        obj.is_a?(Selenium::WebDriver::Element) && obj.displayed? && obj.enabled?
+      }
+
+    rescue Selenium::WebDriver::Error::NoSuchElementError
+      ;
+
+    rescue Selenium::WebDriver::Error::TimeOutError
+      ;
+    end
+
+    obj
+  end
+
   ##
   # Browza.instance.click('page(sideNav).get(desktop)')
   ##
-  def click(_locator, _drv=nil, _timeout=30)
+  def click(_locator, _drv=nil, _timeout = 30)
 
     @logger.debug __FILE__ + (__LINE__).to_s + " click(#{_locator})"
     rc = false
@@ -831,6 +868,8 @@ class Manager
           obj.is_a?(Selenium::WebDriver::Element) && obj.displayed? && obj.enabled?
         }
 
+#        obj = _getActionableElement(_locator, drv, _timeout)
+
       #  drv.action.move_to(obj).perform
         scrollElementIntoMiddle = "var viewPortHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);" +
          "var elementTop = arguments[0].getBoundingClientRect().top;" +
@@ -843,7 +882,7 @@ class Manager
 
         @logger.debug __FILE__ + (__LINE__).to_s + "  [click]: obj => #{obj.class} : #{isDisplayed}"
 
-        if !obj.nil? && isDisplayed && obj.is_a?(Selenium::WebDriver::Element)
+        if !obj.nil? && obj.is_a?(Selenium::WebDriver::Element) && obj.displayed?
           @logger.debug __FILE__ + (__LINE__).to_s + " clicked #{_locator}"
           obj.click
           rc = true
@@ -864,9 +903,15 @@ class Manager
 
   def highlight(_locator, color='red', _drv=nil, _timeout=30)
     rc = false
-    rgb=nil
+    rgb = nil
+    obj = nil
 
-    obj = findLocator(_locator)
+    if _locator.is_a?(Selenium::WebDriver::Element)
+      obj = _locator
+    else
+      obj = findLocator(_locator)
+    end
+
     if !obj.nil?
       if color.match(/\s*blue/i)
         rgb='rgb(0, 0, 255)'
@@ -959,6 +1004,40 @@ class Manager
     rc
   end
 
+  def type!(data)
+    rc = { :length => nil, :comment => nil, :data => data }
+
+    drv = Browza::Manager.instance.getDriver()
+
+    if drv.is_a?(Selenium::WebDriver::Driver)
+      obj = drv.switch_to.active_element
+
+      if obj.is_a?(Selenium::WebDriver::Element) && Browza::Manager.instance.isVisible?(obj)
+
+        Browza::Manager.instance.highlight(obj)
+
+        begin
+          drv.execute_script("hlt = function(c) { arguments[0].value = '#{data}'; }; return hlt(arguments[0]);", obj)
+          rc[:length] = data.length
+          rc[:comment] = 'JSDOM'
+
+        rescue Selenium::WebDriver::Error::UnknownError => ex
+#          puts "#{ex.class}"
+#          puts "Backtrace:\n\t#{ex.backtrace.join("\n\t")}"
+#          puts "Data => #{data}";
+          Browza::Manager.instance.type('focused', data)
+          rc[:comment] = 'Typed:Selenium::WebDriver::Error::UnknownError'
+          rc[:length] = data.length
+        end
+
+      end
+    end
+
+    @logger.debug __FILE__ + (__LINE__).to_s + " type!(#{data}) : rc:#{rc}"
+    rc
+  end
+
+
 
   def isNotDisplayed?(_locator, _timeout=10)
     !displayed?(_locator, getDriver(), _timeout)
@@ -1019,10 +1098,22 @@ class Manager
 
   def isVisible?(_locator, expected = true, _timeout = 30)
     obj = nil
-    rc = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
-      obj = findLocator(_locator, drv)
-      obj.is_a?(Selenium::WebDriver::Element) && obj.displayed?
+
+
+    @drv.switch_to.default_content
+
+    if _locator.is_a?(Selenium::WebDriver::Element)
+      obj = _locator
+
+      rc = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
+        obj.displayed?
+      }
+    else
+      rc = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
+        obj = findLocator(_locator, @drv)
+        obj.is_a?(Selenium::WebDriver::Element) && obj.displayed?
     }
+    end
 
     @logger.debug __FILE__ + (__LINE__).to_s + " isVisible?(#{_locator}) : #{rc}"
     rc == expected
