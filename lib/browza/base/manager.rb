@@ -231,6 +231,10 @@ class Manager
         caps['version'] = ENV['SELENIUM_VERSION']
         ENV['SELENIUM_RUN']='sauce'
 
+        if !ENV['SAUCE_TUNNEL_ID'].nil?
+          caps['tunnel-identifier'] = ENV['SAUCE_TUNNEL_ID'].to_s
+        end
+
         connectSauce(caps['name'], caps)
       end
 
@@ -249,6 +253,9 @@ class Manager
       _width = 1035
       _height = 768
     end
+
+
+
 
     @logger.debug __FILE__ + (__LINE__).to_s + " createBrowser() : width x height : #{_width}, #{_height}" if @debug
 
@@ -325,13 +332,27 @@ class Manager
     @logger.debug "Selenium::WebDriver.for #{@browserType}  (isSymbol: #{@browserType.is_a?(Symbol)})" if @debug
 
     begin
-      if timeout.nil?
+      if timeout.nil? && ENV['SELENIUM_PROXY'].nil?
         @drv = Selenium::WebDriver.for @browserType
       else
-        client = Selenium::WebDriver::Remote::Http::Default.new
-        client.read_timeout = timeout.to_i
 
-        @drv = Selenium::WebDriver.for @browserType, http_client: client
+        if ENV['SELENIUM_PROXY']
+
+          if @browserType.to_s.match(/firefox/i)
+            @logger.debug "createBrowser() with proxy: #{ENV['SELENIUM_PROXY']}"
+
+            profile = Selenium::WebDriver::Firefox::Profile.new
+            proxy = Selenium::WebDriver::Proxy.new(http: "#{ENV['SELENIUM_PROXY']}")
+            profile.proxy = proxy
+            options = Selenium::WebDriver::Firefox::Options.new(profile: profile)
+            @drv = Selenium::WebDriver.for :firefox, options: options
+          end
+
+        elsif
+          client = Selenium::WebDriver::Remote::Http::Default.new
+          client.read_timeout = timeout.to_i
+          @drv = Selenium::WebDriver.for @browserType, http_client: client
+        end
 
         puts __FILE__ + (__LINE__).to_s + " Set NET::TIMEOUT to #{timeout.to_s}"
       end
@@ -1311,6 +1332,28 @@ class Manager
     rc
   end
 
+  def getText(_locator)
+    @logger.debug __FILE__ + (__LINE__).to_s + " getText?(#{_locator})"
+    rc = false
+
+    begin
+      obj = findLocator(_locator)
+
+      @logger.debug __FILE__ + (__LINE__).to_s + " | obj : #{obj}"
+
+      if !obj.nil?
+        @logger.debug __FILE__ + (__LINE__).to_s + " | obj.text: #{obj.text}"
+        rc = obj.text
+      end
+
+    rescue => ex
+      @logger.warn __FILE__ + (__LINE__).to_s + " #{ex.class}"
+      @logger.warn "Backtrace:\n\t#{ex.backtrace.join("\n\t")}"
+    end
+
+    @logger.debug __FILE__ + (__LINE__).to_s + " [return]: isText?(#{_locator}) : #{rc}"
+    rc
+  end
 
   def isText?(_locator, regex=nil)
     @logger.debug __FILE__ + (__LINE__).to_s + " isText?(#{_locator}, #{regex})"
@@ -1362,32 +1405,38 @@ class Manager
     rc
   end
 
-  def pressKey(k, n = 1)
+  def pressKey(k, n = 1, _delay = 0.25)
 
     rc = 0
     begin
       n.times {
-        if k.match(/^\s*tab/i)
+        if k.match(/^\s*(tab|__tab__)\s*$/i)
           activeElt = @drv.switch_to.active_element
-          activeElt.send_keys(:tab)
+          n.times { activeElt.send_keys(:tab); rc+=1; }
+          break;
         elsif k.match(/^\s*clear\s*$/)
           activeElt = @drv.switch_to.active_element
           activeElt.clear
-        elsif k.match(/\s*^enter/i)
+        elsif k.match(/^\s*^enter\s*$/i)
           activeElt = @drv.switch_to.active_element
           activeElt.send_keys(:enter)
-        elsif k.match(/\s*^(down|__down__|arrow_down)/i)
+        elsif k.match(/^\s*(down|arrow_down|down_arrow|__down__)\s*/)
+          n.times { activeElt = @drv.switch_to.active_element; activeElt.send_keys(:arrow_down); sleep _delay; rc+=1 }
+          return rc;
+        elsif k.match(/^\s*(space|__space__)\s*$/i)
           activeElt = @drv.switch_to.active_element
-          activeElt.send_keys(:arrow_down)
-        elsif k.match(/\s*^up/i)
-          activeElt = @drv.switch_to.active_element
-          activeElt.send_keys(:arrow_up)
-        elsif k.match(/\s*escape/i)
+          n.times { activeElt.send_keys(:space); sleep _delay; rc+=1 }
+          break
+        elsif k.match(/^\s*(up|arrow_up|up_arrow|__up__)\s*$/)
+          n.times { activeElt = @drv.switch_to.active_element; activeElt.send_keys(:arrow_up); sleep _delay; rc+=1 }
+          return rc;
+        elsif k.match(/^\s*escape\s*$/i)
           activeElt = @drv.switch_to.active_element
           activeElt.send_keys(:escape)
-        elsif k.match(/\s*page_down/i)
-          @drv.action.send_keys(:page_down).perform
-        elsif k.match(/\s*__SHIFT_TAB__\s*$/i)
+        elsif k.match(/^\s*page_down\s*/i)
+          n.times { activeElt = @drv.switch_to.active_element; @drv.action.send_keys(:page_down).perform; sleep _delay; rc+=1 }
+          break
+        elsif k.match(/^\s*__SHIFT_TAB__\s*$/i)
           @drv.action.key_down(:shift).send_keys(:tab).perform
           @drv.action.key_up(:shift).perform
         else
