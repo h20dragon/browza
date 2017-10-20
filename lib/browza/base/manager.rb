@@ -9,7 +9,6 @@ module Browza
 class Manager
 
   include Singleton
-  include Singleton
 
   attr_accessor :drv
   attr_accessor :appModels
