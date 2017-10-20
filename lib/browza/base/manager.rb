@@ -13,6 +13,7 @@ class Manager
   attr_accessor :drv
   attr_accessor :appModels
   attr_accessor :browserType
+  attr_accessor :defaultRetries
   attr_accessor :defaultTimeout
   attr_accessor :driverList
   attr_accessor :browserMgr
@@ -25,6 +26,7 @@ class Manager
     @logger.level = _logLevel
     @defaultTimeout = 30
     @appModels=[]
+    @defaultRetries = 2
     @browserMgr = Browza::BrowzaMgr.new()
   end
 
@@ -228,6 +230,10 @@ class Manager
         caps['version'] = ENV['SELENIUM_VERSION']
         ENV['SELENIUM_RUN']='sauce'
 
+        if !ENV['SAUCE_TUNNEL_ID'].nil?
+          caps['tunnel-identifier'] = ENV['SAUCE_TUNNEL_ID'].to_s
+        end
+
         connectSauce(caps['name'], caps)
       end
 
@@ -235,6 +241,8 @@ class Manager
   end
 
   def createBrowser(*p)
+
+    timeout = nil
 
     if ENV['SELENIUM_RESOLUTION']
       @logger.debug " SELENIUM_RESOLUTION=#{ENV['SELENIUM_RESOLUTION']}"  if @debug
@@ -244,6 +252,9 @@ class Manager
       _width = 1035
       _height = 768
     end
+
+
+
 
     @logger.debug __FILE__ + (__LINE__).to_s + " createBrowser() : width x height : #{_width}, #{_height}" if @debug
 
@@ -281,6 +292,10 @@ class Manager
             _height = h[:height]
           end
 
+          if h.has_key?(:timeout)
+            timeout = h[:timeout]
+          end
+
           if h.has_key?(:id)
             _id = h[:id]
           end
@@ -316,7 +331,31 @@ class Manager
     @logger.debug "Selenium::WebDriver.for #{@browserType}  (isSymbol: #{@browserType.is_a?(Symbol)})" if @debug
 
     begin
-      @drv = Selenium::WebDriver.for @browserType
+      if timeout.nil? && ENV['SELENIUM_PROXY'].nil?
+        @drv = Selenium::WebDriver.for @browserType
+      else
+
+        if ENV['SELENIUM_PROXY']
+
+          if @browserType.to_s.match(/firefox/i)
+            @logger.debug "createBrowser() with proxy: #{ENV['SELENIUM_PROXY']}"
+
+            profile = Selenium::WebDriver::Firefox::Profile.new
+            proxy = Selenium::WebDriver::Proxy.new(http: "#{ENV['SELENIUM_PROXY']}")
+            profile.proxy = proxy
+            options = Selenium::WebDriver::Firefox::Options.new(profile: profile)
+            @drv = Selenium::WebDriver.for :firefox, options: options
+          end
+
+        elsif
+          client = Selenium::WebDriver::Remote::Http::Default.new
+          client.read_timeout = timeout.to_i
+          @drv = Selenium::WebDriver.for @browserType, http_client: client
+        end
+
+        puts __FILE__ + (__LINE__).to_s + " Set NET::TIMEOUT to #{timeout.to_s}"
+      end
+
     rescue  TypeError
       @logger.warn __FILE__ + (__LINE__).to_s +   " See https://github.com/mozilla/geckodriver/issues/676" if @browserType == :firefox
     end
@@ -411,6 +450,7 @@ class Manager
 
   def goto(url, id=nil)
 
+    @logger.debug __FILE__ + (__LINE__).to_s + " goto(#{url})"
     rc = false
 
     if id.nil?
@@ -434,6 +474,7 @@ class Manager
 
     if p.is_a?(Array)
       if p.length == 1
+        @logger.debug __FILE__ + (__LINE__).to_s + " navigate(#{p[0].to_s}"
         rc = goto(p[0].to_s)
       elsif p.length == 2
         rc = goto(p[0], p[1])
@@ -748,7 +789,7 @@ class Manager
 
     if _hit.is_a?(Hash)
 
-      2.times {
+      @defaultRetries.times {
 
         begin
           rcFrame = true
@@ -789,33 +830,87 @@ class Manager
   end
 
 
-  def text(_locator, _drv=nil, _timeout=30)
-    rc=nil
+  def text(_locator, _drv = nil, _timeout = 30)
+    rc = nil
 
-    @driverList.each do |b|
-      begin
+    2.times { |i|
 
-        drv=b[:drv]
-        obj=nil
-        drv.switch_to.default_content
-        isDisplayed = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
-          obj = findLocator(_locator, drv)
-          obj.is_a?(Selenium::WebDriver::Element) && obj.displayed? && obj.enabled?
-        }
-        if !obj.nil? && isDisplayed && obj.is_a?(Selenium::WebDriver::Element)
-          @logger.debug __FILE__ + (__LINE__).to_s + " clicked #{_locator}"
-          rc = obj.text
+        @driverList.each do |b|
+          begin
+
+            drv = b[:drv]
+            obj = nil
+            drv.switch_to.default_content
+            isDisplayed = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
+              obj = findLocator(_locator, drv)
+              obj.is_a?(Selenium::WebDriver::Element) && obj.displayed? && obj.enabled?
+            }
+            if !obj.nil? && isDisplayed && obj.is_a?(Selenium::WebDriver::Element)
+              @logger.debug __FILE__ + (__LINE__).to_s + " clicked #{_locator}"
+              rc = obj.text
+            end
+
+            break
+
+
+          rescue Selenium::WebDriver::Error::TimeOutError
+            puts __FILE__ + (__LINE__).to_s + " retry: #{i} locator:#{_locator}"
+
+          rescue => ex
+            puts __FILE__ + (__LINE__).to_s + " #{ex.class}"
+            puts "#{ex.class}"
+            puts "Backtrace:\n\t#{ex.backtrace.join("\n\t")}"
+          end
         end
-      end
-    end
+    }
 
     rc
   end
 
+
+  def _getActionableElement(_locator, drv, _timeout = 30)
+    obj = nil
+    begin
+      drv.switch_to.default_content
+
+      isDisplayed = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
+        obj = findLocator(_locator, drv)
+        obj.is_a?(Selenium::WebDriver::Element) && obj.displayed? && obj.enabled?
+      }
+
+    rescue Selenium::WebDriver::Error::NoSuchElementError
+      ;
+
+    rescue Selenium::WebDriver::Error::TimeOutError
+      ;
+    end
+
+    obj
+  end
+
+
+  def scrollTo(_locator)
+
+    drv = @driverList[0][:drv]
+
+    obj = findLocator(_locator)
+
+    scrollElementIntoMiddle = "var viewPortHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);" +
+      "var elementTop = arguments[0].getBoundingClientRect().top;" +
+      "window.scrollBy(0, elementTop-(viewPortHeight/2) + 150);";
+
+    drv.execute_script("arguments[0].scrollIntoView(true);", obj);
+    drv.action.move_to(obj).perform
+  #  drv.execute_script(scrollElementIntoMiddle, obj)
+
+  end
+
+
+
   ##
   # Browza.instance.click('page(sideNav).get(desktop)')
   ##
-  def click(_locator, _drv=nil, _timeout=30)
+  def click(_locator, _drv=nil, _timeout = 30)
 
     @logger.debug __FILE__ + (__LINE__).to_s + " click(#{_locator})"
     rc = false
@@ -831,6 +926,8 @@ class Manager
           obj.is_a?(Selenium::WebDriver::Element) && obj.displayed? && obj.enabled?
         }
 
+#        obj = _getActionableElement(_locator, drv, _timeout)
+
       #  drv.action.move_to(obj).perform
         scrollElementIntoMiddle = "var viewPortHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);" +
          "var elementTop = arguments[0].getBoundingClientRect().top;" +
@@ -843,13 +940,16 @@ class Manager
 
         @logger.debug __FILE__ + (__LINE__).to_s + "  [click]: obj => #{obj.class} : #{isDisplayed}"
 
-        if !obj.nil? && isDisplayed && obj.is_a?(Selenium::WebDriver::Element)
+        if !obj.nil? && obj.is_a?(Selenium::WebDriver::Element) && obj.displayed?
           @logger.debug __FILE__ + (__LINE__).to_s + " clicked #{_locator}"
           obj.click
           rc = true
         end
+
+      rescue Selenium::WebDriver::Error::UnknownError
+
       rescue => ex
-        @logger.debug __FILE__ + (__LINE__).to_s + " #{ex.class}"
+        @logger.debug __FILE__ + (__LINE__).to_s + " #{ex.class} : #{_locator}"
         @logger.debug "Backtrace:\n\t#{ex.backtrace.join("\n\t")}"
       end
     end
@@ -862,11 +962,21 @@ class Manager
     rc
   end
 
-  def highlight(_locator, color='red', _drv=nil, _timeout=30)
+  def highlight(_locator=nil, color='red', _drv=nil, _timeout=30)
     rc = false
-    rgb=nil
+    rgb = nil
+    obj = nil
 
-    obj = findLocator(_locator)
+    if _locator.nil?
+      _locator = @drv.switch_to.active_element
+    end
+
+    if _locator.is_a?(Selenium::WebDriver::Element)
+      obj = _locator
+    else
+      obj = findLocator(_locator)
+    end
+
     if !obj.nil?
       if color.match(/\s*blue/i)
         rgb='rgb(0, 0, 255)'
@@ -916,6 +1026,44 @@ class Manager
   end
 
 
+  def tabUntil( opts )
+    defaults = { :enableHighlight => false, :verbose => false, :max => 25 }
+    opts = defaults.merge(opts)
+
+
+    if opts[:verbose]
+      puts "[tabUntil]: " + opts.to_s
+    end
+
+  #  startObj = @drv.switch_to.active_element
+    i = 0
+    while  i < opts[:max].to_i do
+
+      @drv.action.send_keys(:tab).perform
+
+      obj = @drv.switch_to.active_element
+
+      if obj.is_a?(Selenium::WebDriver::Element) && obj.displayed?
+        puts "#{i}. " + obj.text.to_s + " : " + obj.attribute('value').to_s  if opts[:verbose]
+        i += 1
+      end
+
+      if false && obj == startObj
+        puts ".. wrapped"
+        break
+      end
+
+      if opts[:enableHighlight]
+        highlight(obj)
+      end
+
+    end
+
+    puts "[tabUntil]: total: #{i.to_s}"
+
+  end
+
+
   def type(_locator, _text, _timeout=30)
     rc = false
 
@@ -959,12 +1107,88 @@ class Manager
     rc
   end
 
+  def type!(data)
+    rc = { :length => nil, :comment => nil, :data => data }
 
-  def isNotDisplayed?(_locator, _timeout=10)
-    !displayed?(_locator, getDriver(), _timeout)
+    drv = Browza::Manager.instance.getDriver()
+
+    if drv.is_a?(Selenium::WebDriver::Driver)
+      obj = drv.switch_to.active_element
+
+      if obj.is_a?(Selenium::WebDriver::Element) && Browza::Manager.instance.isVisible?(obj)
+
+        Browza::Manager.instance.highlight(obj)
+
+        begin
+          jsCmd = "hlt = function(c) { arguments[0].value = '#{data}'; }; return hlt(arguments[0]);"
+          jsCmd = "return arguments[0].value = '#{data}'"
+          puts __FILE__ + (__LINE__).to_s + " Data.lines : #{data.lines.count}"
+          if data.lines.count > 1
+            jsCmd = "return arguments[0].value = '#{data.gsub("\n", "\t")}'"
+          end
+          drv.execute_script(jsCmd, obj)
+          rc[:length] = data.length
+          rc[:comment] = 'JSDOM'
+
+        rescue Selenium::WebDriver::Error::JavascriptError
+          Browza::Manager.instance.type('focused', data)
+          rc[:comment] = 'Typed:JavaScriptError'
+          rc[:length] = data.length
+
+        rescue Selenium::WebDriver::Error::UnknownError => ex
+          puts "#{ex.class} : #{ex.message.to_s}"
+
+          if ex.message.to_s.match(/SyntaxError: Invalid or unexpected token/)
+             rc[:comment] = "execute_script::SyntaxError - unexpected token"
+            puts __FILE__ + (__LINE__).to_s + " Invalid Cmd => #{jsCmd}"
+          else
+            rc[:comment] = ex.class.to_s
+            puts "Backtrace:\n\t#{ex.backtrace.join("\n\t")}"
+            puts "Data => #{data}";
+          end
+
+          Browza::Manager.instance.type('focused', data)
+
+            rc[:length] = data.length
+
+
+        end
+
+      end
+    end
+
+    @logger.debug __FILE__ + (__LINE__).to_s + " type!(#{data}) : rc:#{rc}"
+    rc
   end
 
-  def displayed?(_locator, _drv=nil, _timeout=30)
+
+  # TODO: Proper handling of _timeout, instead of hack to globalize @defaultTimeout.
+  def isNotDisplayed?(_locator, _timeout=10)
+    rc = false
+    _saveDefault = @defaultTimeout
+    _saveRetries = @defaultRetries
+
+    @defaultTimeout = _timeout
+    @defaultRetries = 1
+
+    i=0
+    begin
+      while i < 4 && !rc
+        rc = !displayed?(_locator, getDriver(), _timeout)
+        i+=1
+        sleep 0.25
+      end
+    rescue => ex
+      i+=1
+      ;
+    end
+
+    @defaultRetries = _saveDefault
+    @defaultTimeout = _saveDefault
+    rc
+  end
+
+  def displayed?(_locator, _drv=nil, _timeout = 30)
     obj = findLocator(_locator)
     obj.is_a?(Selenium::WebDriver::Element) && obj.displayed?
   end
@@ -1019,13 +1243,56 @@ class Manager
 
   def isVisible?(_locator, expected = true, _timeout = 30)
     obj = nil
-    rc = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
-      obj = findLocator(_locator, drv)
-      obj.is_a?(Selenium::WebDriver::Element) && obj.displayed?
-    }
+    rc = nil
 
+    begin
+        @drv.switch_to.default_content
+
+        if _locator.is_a?(Selenium::WebDriver::Element)
+          obj = _locator
+
+          rc = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
+            obj.displayed?
+          }
+        else
+          rc = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
+            obj = findLocator(_locator, @drv)
+            obj.is_a?(Selenium::WebDriver::Element) && obj.displayed?
+        }
+        end
+
+    rescue Selenium::WebDriver::Error::TimeOutError
+        rc = false
+    end
     @logger.debug __FILE__ + (__LINE__).to_s + " isVisible?(#{_locator}) : #{rc}"
     rc == expected
+  end
+
+  def isNotVisible?(_locator, _timeout = 30)
+    obj = nil
+    rc = nil
+
+    begin
+      @drv.switch_to.default_content
+
+      if _locator.is_a?(Selenium::WebDriver::Element)
+        obj = _locator
+
+        rc = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
+          obj.displayed?
+        }
+      else
+        rc = Selenium::WebDriver::Wait.new(timeout: _timeout).until {
+          obj = findLocator(_locator, @drv)
+          obj.is_a?(Selenium::WebDriver::Element) && obj.displayed?
+        }
+      end
+
+    rescue Selenium::WebDriver::Error::TimeOutError
+      rc = true
+    end
+
+    rc
   end
 
 
@@ -1064,6 +1331,28 @@ class Manager
     rc
   end
 
+  def getText(_locator)
+    @logger.debug __FILE__ + (__LINE__).to_s + " getText?(#{_locator})"
+    rc = false
+
+    begin
+      obj = findLocator(_locator)
+
+      @logger.debug __FILE__ + (__LINE__).to_s + " | obj : #{obj}"
+
+      if !obj.nil?
+        @logger.debug __FILE__ + (__LINE__).to_s + " | obj.text: #{obj.text}"
+        rc = obj.text
+      end
+
+    rescue => ex
+      @logger.warn __FILE__ + (__LINE__).to_s + " #{ex.class}"
+      @logger.warn "Backtrace:\n\t#{ex.backtrace.join("\n\t")}"
+    end
+
+    @logger.debug __FILE__ + (__LINE__).to_s + " [return]: isText?(#{_locator}) : #{rc}"
+    rc
+  end
 
   def isText?(_locator, regex=nil)
     @logger.debug __FILE__ + (__LINE__).to_s + " isText?(#{_locator}, #{regex})"
@@ -1115,27 +1404,38 @@ class Manager
     rc
   end
 
-  def pressKey(k, n = 1)
+  def pressKey(k, n = 1, _delay = 0.25)
 
     rc = 0
     begin
       n.times {
-        if k.match(/^\s*tab/i)
+        if k.match(/^\s*(tab|__tab__)\s*$/i)
           activeElt = @drv.switch_to.active_element
-          activeElt.send_keys(:tab)
+          n.times { activeElt.send_keys(:tab); rc+=1; }
+          break;
         elsif k.match(/^\s*clear\s*$/)
           activeElt = @drv.switch_to.active_element
           activeElt.clear
-        elsif k.match(/\s*^enter/i)
+        elsif k.match(/^\s*^enter\s*$/i)
           activeElt = @drv.switch_to.active_element
           activeElt.send_keys(:enter)
-        elsif k.match(/\s*^(down|__down__|arrow_down)/i)
+        elsif k.match(/^\s*(down|arrow_down|down_arrow|__down__)\s*/)
+          n.times { activeElt = @drv.switch_to.active_element; activeElt.send_keys(:arrow_down); sleep _delay; rc+=1 }
+          return rc;
+        elsif k.match(/^\s*(space|__space__)\s*$/i)
           activeElt = @drv.switch_to.active_element
-          activeElt.send_keys(:arrow_down)
-        elsif k.match(/\s*^up/i)
+          n.times { activeElt.send_keys(:space); sleep _delay; rc+=1 }
+          break
+        elsif k.match(/^\s*(up|arrow_up|up_arrow|__up__)\s*$/)
+          n.times { activeElt = @drv.switch_to.active_element; activeElt.send_keys(:arrow_up); sleep _delay; rc+=1 }
+          return rc;
+        elsif k.match(/^\s*escape\s*$/i)
           activeElt = @drv.switch_to.active_element
-          activeElt.send_keys(:arrow_up)
-        elsif k.match(/\s*__SHIFT_TAB__\s*$/i)
+          activeElt.send_keys(:escape)
+        elsif k.match(/^\s*page_down\s*/i)
+          n.times { activeElt = @drv.switch_to.active_element; @drv.action.send_keys(:page_down).perform; sleep _delay; rc+=1 }
+          break
+        elsif k.match(/^\s*__SHIFT_TAB__\s*$/i)
           @drv.action.key_down(:shift).send_keys(:tab).perform
           @drv.action.key_up(:shift).perform
         else
