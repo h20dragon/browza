@@ -30,6 +30,10 @@ class Manager
     @browserMgr = Browza::BrowzaMgr.new()
   end
 
+  def setDebug(b)
+    @debug = b
+  end
+
   def _addDriver(d)
     @logger.debug __FILE__ + (__LINE__).to_s + " _addDriver(#{d})" if @debug
     @browserMgr.add(d)
@@ -101,8 +105,10 @@ class Manager
 
       if caps['platform'].match(/\s*(linux|macOS|osx|os x|windows)/i)
 
-        if caps.has_key?('browserType')
-          browserType = caps['browserType']
+        if caps.has_key?('browserType') || ENV['SELENIUM_BROWSER']
+          browserType = caps['browserType'] || ENV['SELENIUM_BROWSER']
+
+          @logger.debug " browserType: #{browserType}"
 
           if browserType.match(/edge/i)
             caps = Selenium::WebDriver::Remote::Capabilities.edge()
@@ -146,7 +152,7 @@ class Manager
 
         _addDriver( { :id => id, :drv => @drv, :is_sauce => !runLocal })
       rescue => ex
-        @logger.fatal __FILE__ + (__LINE__).to_s + " #{ex.class}"
+        @logger.fatal __FILE__ + (__LINE__).to_s + " #{ex.class} : #{ex}"
         @logger.fatal "Backtrace:\n\t#{ex.backtrace.join("\n\t")}"
       end
 
@@ -252,9 +258,6 @@ class Manager
       _width = 1035
       _height = 768
     end
-
-
-
 
     @logger.debug __FILE__ + (__LINE__).to_s + " createBrowser() : width x height : #{_width}, #{_height}" if @debug
 
@@ -895,13 +898,18 @@ class Manager
 
     obj = findLocator(_locator)
 
-    scrollElementIntoMiddle = "var viewPortHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);" +
-      "var elementTop = arguments[0].getBoundingClientRect().top;" +
-      "window.scrollBy(0, elementTop-(viewPortHeight/2) + 150);";
+    if !obj.nil?
 
-    drv.execute_script("arguments[0].scrollIntoView(true);", obj);
-    drv.action.move_to(obj).perform
-  #  drv.execute_script(scrollElementIntoMiddle, obj)
+      scrollElementIntoMiddle = "var viewPortHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);" +
+        "var elementTop = arguments[0].getBoundingClientRect().top;" +
+        "window.scrollBy(0, elementTop-(viewPortHeight/2) + 150);";
+
+        drv.execute_script("arguments[0].scrollIntoView(true);", obj);
+      #  drv.action.move_to(obj).perform
+      #  drv.execute_script(scrollElementIntoMiddle, obj)
+
+    end
+
 
   end
 
@@ -1329,6 +1337,19 @@ class Manager
 
     @logger.debug __FILE__ + (__LINE__).to_s + " [return]: isValue?(#{_locator}, #{regex}) : #{rc}"
     rc
+  end
+
+  def getStyle(_locator, _attr)
+    attr = nil
+
+    begin
+      obj = findLocator(_locator)
+      attr = obj.style(_attr)
+    rescue => ex
+      ;
+    end
+
+    attr
   end
 
   def getText(_locator)
