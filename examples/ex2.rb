@@ -8,6 +8,7 @@ puts "Creating Chrome Browser!"
 
 
 Browza::Manager.instance.createBrowser(:chrome)
+Browza::Manager.instance.createBrowser(:chrome)
 
 
 puts "Navigate to playground"
