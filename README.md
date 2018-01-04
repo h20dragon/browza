@@ -36,6 +36,8 @@ gem install browza
        * 52.0  (for Chrome/Firefox)
        * etc
     1. SELENIUM_RESOLUTION=[widthxheight] 
+    1. SELENIUM_PROXY=[ proxy ]
+       * This is optional depending on your network
 
 
 ### displayed?(<locator>)
