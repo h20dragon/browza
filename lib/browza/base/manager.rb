@@ -3,6 +3,7 @@ require 'singleton'
 require 'appmodel'
 require 'logging'
 require 'sauce_whisk'
+require 'eyes_selenium'
 
 module Browza
 
@@ -18,6 +19,8 @@ class Manager
   attr_accessor :driverList
   attr_accessor :browserMgr
   attr_accessor :debug
+  attr_accessor :eyes
+  attr_accessor :eyesOptions
 
   def initialize(_logLevel = :warn)
     @debug = false
@@ -28,10 +31,24 @@ class Manager
     @appModels=[]
     @defaultRetries = 2
     @browserMgr = Browza::BrowzaMgr.new()
+    @eyes = nil
+    @eyesOptions = { :appName => ENV['EYES_APPNAME'], :testName => ENV['EYES_TESTNAME'] }
+  end
+
+  def setAppName(s)
+    @eyesOptions[:appName] = s
+  end
+
+  def setTestName(s)
+    @eyesOptions[:testName] = s
   end
 
   def setDebug(b)
     @debug = b
+
+    if b
+      @logger.level = :debug
+    end
   end
 
   def _addDriver(d)
@@ -186,7 +203,7 @@ class Manager
       i=0
       @driverList.each do |b|
         target_size = Selenium::WebDriver::Dimension.new(width.to_i, height.to_i)
-        if b[:drv] && (b[:drv].is_a?(Selenium::WebDriver) || b[:drv].is_a?(Selenium::WebDriver::Driver))
+        if b[:drv] && (b[:drv].is_a?(Selenium::WebDriver) || b[:drv].is_a?(Selenium::WebDriver::Driver) || b.has_key?(:id))
           b[:drv].manage.window.size = target_size
         else
           @logger.warn __FILE__ + (__LINE__).to_s + " Attempt to access driver failed.  (#{b})"
@@ -249,6 +266,19 @@ class Manager
   def createBrowser(*p)
 
     timeout = nil
+
+    if ENV['SELENIUM_EYES']
+      @logger.debug __FILE__ + (__LINE__).to_s + " Enable EYES"
+      @eyes = Applitools::Selenium::Eyes.new()
+      @eyes.api_key = ENV['APPLITOOLS_API_KEY']
+      @eyes.force_full_page_screenshot = true
+      @eyes.stitch_mode = :css
+      @eyes.match_level = :strict
+      @eyes.match_timeout = 8
+      batch = Applitools::BatchInfo.new('DEMO_COREUI_HIGX')
+      batch.id = 'DEC17'
+      @eyes.batch = batch
+    end
 
     if ENV['SELENIUM_RESOLUTION']
       @logger.debug " SELENIUM_RESOLUTION=#{ENV['SELENIUM_RESOLUTION']}"  if @debug
@@ -335,7 +365,24 @@ class Manager
 
     begin
       if timeout.nil? && ENV['SELENIUM_PROXY'].nil?
-        @drv = Selenium::WebDriver.for @browserType
+
+        if @eyes.nil?
+          @drv = Selenium::WebDriver.for @browserType
+        else
+          @logger.debug __FILE__ + (__LINE__).to_s + " Create eyes: widthxheight: #{_width} by #{_height}"
+          _driver = Selenium::WebDriver.for @browserType
+
+          if @eyes
+            @drv = @eyes.open(
+              app_name: @eyesOptions[:appName],
+              test_name: @eyesOptions[:testName],
+              viewport_size: {width: _width.to_i, height: _height.to_i},
+              driver: _driver
+            )
+          end
+
+        end
+
       else
 
         if ENV['SELENIUM_PROXY']
@@ -344,16 +391,38 @@ class Manager
             @logger.debug "createBrowser() with proxy: #{ENV['SELENIUM_PROXY']}"
 
             profile = Selenium::WebDriver::Firefox::Profile.new
+
+            # Selenium::WebDriver::Proxy.new(http: "127.0.0.1:8080")
             proxy = Selenium::WebDriver::Proxy.new(http: "#{ENV['SELENIUM_PROXY']}")
-            profile.proxy = proxy
-            options = Selenium::WebDriver::Firefox::Options.new(profile: profile)
-            @drv = Selenium::WebDriver.for :firefox, options: options
+          #  profile.proxy = proxy
+          #  options = Selenium::WebDriver::Firefox::Options.new(profile: profile)
+
+            caps = Selenium::WebDriver::Remote::Capabilities.firefox(proxy: proxy)
+
+
+          #  @drv = Selenium::WebDriver.for :firefox, options: options
+
+            @drv = Selenium::WebDriver.for :firefox, :desired_capabilities => caps
           end
 
         elsif
           client = Selenium::WebDriver::Remote::Http::Default.new
           client.read_timeout = timeout.to_i
-          @drv = Selenium::WebDriver.for @browserType, http_client: client
+
+          if @eyes.nil?
+            @drv = Selenium::WebDriver.for @browserType, http_client: client
+          else
+
+            @logger.debug __FILE__ + (__LINE__).to_s + " Create eyes"; STDIN.gets
+            _driver = Selenium::WebDriver.for @browserType, http_client: client
+            @drv = @eyes.open(
+              app_name: @eyesOptions[:appName],
+              test_name: @eyesOptions[:testName],
+              viewport_size: {width: _width, height: _height},
+              driver: _driver
+            )
+          end
+
         end
 
         puts __FILE__ + (__LINE__).to_s + " Set NET::TIMEOUT to #{timeout.to_s}"
@@ -405,6 +474,11 @@ class Manager
 
 
   def quit(id=nil)
+
+    if @eyes
+      eyesResults = @eyes.close(false)
+      puts __FILE__ + (__LINE__).to_s + " Eyes => #{eyesResults.to_s}"
+    end
 
     if id.nil?
       @browserMgr.getBrowsers().each do |b|
@@ -1536,6 +1610,17 @@ class Manager
     rc
   end
 
+
+
+  def checkWindow(tag, region = nil)
+    if @eyes
+      @eyes.force_full_page_screenshot = true
+      @eyes.stitch_mode = :css
+      @eyes.match_level = :strict
+      @eyes.check_window(tag.to_s)
+    end
+
+  end
 
 end
 
