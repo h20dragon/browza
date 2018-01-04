@@ -1,0 +1,83 @@
+PATH
+  remote: .
+  specs:
+    browza (0.0.4.1)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    appmodel (0.1.2)
+    archive-zip (0.7.0)
+      io-like (~> 0.3.0)
+    childprocess (0.8.0)
+      ffi (~> 1.0, >= 1.0.11)
+    chromedriver-helper (1.1.0)
+      archive-zip (~> 0.7.0)
+      nokogiri (~> 1.6)
+    diff-lcs (1.3)
+    domain_name (0.5.20170404)
+      unf (>= 0.0.5, < 1.0.0)
+    ffi (1.9.18)
+    http-cookie (1.0.3)
+      domain_name (~> 0.5)
+    io-like (0.3.0)
+    json (2.1.0)
+    little-plugger (1.1.4)
+    logging (2.2.2)
+      little-plugger (~> 1.1)
+      multi_json (~> 1.10)
+    mime-types (3.1)
+      mime-types-data (~> 3.2015)
+    mime-types-data (3.2016.0521)
+    mini_portile2 (2.2.0)
+    multi_json (1.12.1)
+    netrc (0.11.0)
+    nokogiri (1.8.0)
+      mini_portile2 (~> 2.2.0)
+    rake (12.0.0)
+    require_relative (1.0.3)
+    rest-client (2.0.2)
+      http-cookie (>= 1.0.2, < 2.0)
+      mime-types (>= 1.16, < 4.0)
+      netrc (~> 0.8)
+    rspec (3.5.0)
+      rspec-core (~> 3.5.0)
+      rspec-expectations (~> 3.5.0)
+      rspec-mocks (~> 3.5.0)
+    rspec-core (3.5.4)
+      rspec-support (~> 3.5.0)
+    rspec-expectations (3.5.0)
+      diff-lcs (>= 1.2.0, < 2.0)
+      rspec-support (~> 3.5.0)
+    rspec-mocks (3.5.0)
+      diff-lcs (>= 1.2.0, < 2.0)
+      rspec-support (~> 3.5.0)
+    rspec-support (3.5.0)
+    rubyzip (1.2.1)
+    sauce_whisk (0.1.0)
+      json
+      rest-client (~> 2.0)
+    selenium-webdriver (3.4.4)
+      childprocess (~> 0.5)
+      rubyzip (~> 1.0)
+    unf (0.1.4)
+      unf_ext
+    unf_ext (0.0.7.4)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  appmodel
+  browza!
+  bundler (~> 1.15.4)
+  chromedriver-helper
+  logging
+  rake (~> 12.0.0)
+  require_relative
+  rspec (~> 3.5.0)
+  sauce_whisk (~> 0.1.0)
+  selenium-webdriver (~> 3.4.0)
+
+BUNDLED WITH
+   1.15.4
